@@ -142,13 +142,14 @@ class VectorOps
 {
 private: 
     vector<double> sequence;
-    double mean;
+    
     double median;
     double mode;
     double std_dev;
     double variance;
 
 public:
+    double mean;
     //constructors
     //constructor/init
     VectorOps(); 
@@ -232,7 +233,7 @@ bool VectorOps::calc_median()
     return true;
 }
 
-bool VectorOps::calc_mode() // doesnt work fully
+bool VectorOps::calc_mode() 
 { 
     auto beg = sequence.cbegin(); //constant itr read only
 	auto end = sequence.cend(); //constant itr
@@ -242,7 +243,7 @@ bool VectorOps::calc_mode() // doesnt work fully
     double cur_mode = *beg; //derefrence to get first val
     
     
-    for (decltype(size) i = 1; i < sequence.size(); i++) 
+    for (decltype(size) i = 1; i < sequence.size(); ++i) 
     {
         if (sequence[i] == sequence[i-1]) 
         {
@@ -435,7 +436,15 @@ public:
 MLP::MLP(const vector<size_t> &topology, double dropout_rate) //constructor
 { 
     // set dropout_rate to the rate passed by the user 
+    if (dropout_rate != 0.0)
+    {
+        cout << "Dropout : " << dropout_rate*100 << "%" << endl;
+    }
+    else{
+        cout << "No Dropout";
+    }
     this->dropout_rate = dropout_rate;
+    
     // loop through the topology from start to 1 before the output layer
     for (size_t i = 0; i < topology.size() - 1; ++i) 
     {
@@ -628,45 +637,51 @@ int main()
     vector<size_t> topology = {13, 16, 32, 16, num_outputs}; //13 input features, 3 outputs
     // vector<size_t> topology = {5, 10, 12, 10, num_outputs}; //13 input features, 3 outputs
     // MLP mlp(topology, .4);
-    double dropout_rate = 0.1;
 
-    MLP mlp(topology, dropout_rate);
+    double dropout_rate = 0.0;
+    
+    size_t num_epochs = 100;
 
-    string file_name = "Month_Data/April_2023.csv";
-    Matrix norm_vals; //init here and pass by refrence 
-    Matrix true_vals;
-    Matrix mx = parseCSV(file_name, norm_vals, true_vals); // this parses and normalizes the matrix
-
-    // mx.display();
-
-    int split_idx = num_outputs;
-    Matrix left_mtx, right_mtx;
-    splitMatrixAtColumn(mx, split_idx, left_mtx, right_mtx);
+    double learning_rate = 0.1; // This is my alpha
 
     cout << endl;
 
-    Matrix inputs = right_mtx;
+    MLP mlp(topology, dropout_rate);
+
+    // ***************** TRAINING ***************************** 
+    string train_file_name = "Month_Data/April_Data.csv";
+    Matrix train_norm_vals; //init here and pass by refrence 
+    Matrix train_true_vals;
+    Matrix train_mtx = parseCSV(train_file_name, train_norm_vals, train_true_vals); // this parses and normalizes the matrix
+
+    // train_mtx.display();
+
+    int split_idx = num_outputs;
+    Matrix left_mtx, right_mtx;
+    splitMatrixAtColumn(train_mtx, split_idx, left_mtx, right_mtx);
+
+    
+
+    Matrix train_inputs = right_mtx;
     Matrix targets = left_mtx;
 
-    // inputs.display();
+    // train_inputs.display();
 
     // cout << "True : " << endl;
     // true_vals.display();
     // cout << endl;
 
-    size_t num_epochs = 1000;
-
-    double learning_rate = 0.1; // This is my alpha
+    
     
     // training loop 
     for (size_t epoch = 0; epoch < num_epochs; ++epoch) 
     {
         // iterate through the samples 
-        for (size_t i = 0; i < inputs.rows(); ++i) 
+        for (size_t i = 0; i < train_inputs.rows(); ++i) 
         {
             // forward calles the setInput function
             // then perform forward propagation 
-            mlp.forward(inputs[i], true); // passing 'true' since this is the training step
+            mlp.forward(train_inputs[i], true); // passing 'true' since this is the training step
 
             // perform backwards popagation to update weights
             mlp.backward(targets[i], learning_rate);
@@ -675,15 +690,38 @@ int main()
 
     graphviz("train.dot", mlp, topology); // mlp and topology are passed by reference 
 
+    // ***************** TESTING ***************************** 
+    // string test_file_name = "Month_Data/March_2023.csv";
+    string test_file_name = "Month_Data/April_2022.csv";
+    Matrix test_norm_vals; //init here and pass by refrence 
+    Matrix test_true_vals;
+    Matrix test_mtx = parseCSV(test_file_name, test_norm_vals, test_true_vals); // this parses and normalizes the matrix
+
+    // test_mtx.display();
+    // test_norm_vals.display();
+    // test_true_vals.display();
+
+    // int split_idx = num_outputs;
+    Matrix test_left_mtx, test_right_mtx;
+    splitMatrixAtColumn(test_mtx, split_idx, test_left_mtx, test_right_mtx);
+
+    cout << endl;
+
+    Matrix test_inputs = test_right_mtx;
+    // test_inputs.display();
+    // Matrix test_targets = test_left_mtx; // Normalized test values
+
+
     // Test the trained MLP
-    double tmax_min_val  = norm_vals[0][0];
-    double tmax_max_val  = norm_vals[0][1];
+    double tmax_min_val  = test_norm_vals[0][0];
+    double tmax_max_val  = test_norm_vals[0][1];
 
-    double tavg_min_val  = norm_vals[1][0];
-    double tavg_max_val  = norm_vals[1][1];
+    double tavg_min_val  = test_norm_vals[1][0];
+    double tavg_max_val  = test_norm_vals[1][1];
 
-    double tmin_min_val  = norm_vals[2][0];
-    double tmin_max_val  = norm_vals[2][1];
+    double tmin_min_val  = test_norm_vals[2][0];
+    double tmin_max_val  = test_norm_vals[2][1];
+
     
     // cout << tmax_min_val << " " << tmax_max_val<< endl;
     // cout << tavg_min_val << " " << tavg_max_val << endl;
@@ -696,29 +734,37 @@ int main()
     VectorOps tavg_delta;
     VectorOps tmin_delta;
 
-    for (size_t i = 0; i < inputs.rows(); ++i) 
+    double tmax_squared_sum = 0.0;
+
+    double tavg_squared_sum = 0.0;
+
+    double tmin_squared_sum = 0.0;
+
+    for (size_t i = 0; i < test_inputs.rows(); ++i) 
     {
         // Access the i-th row in inputs 
-        vector<double>& input = inputs[i];
+        vector<double>& input = test_inputs[i];
         // passing 'false' since this is the Evaluation step
         mlp.forward(input, false); 
         double out_0 =  mlp.get_output()[0] * (tmax_max_val - tmax_min_val) + tmax_min_val; // val * range + min
         double out_1 =  mlp.get_output()[1] * (tavg_max_val - tavg_min_val) + tavg_min_val; // val * range + min
         double out_2 =  mlp.get_output()[2] * (tmin_max_val - tmin_min_val) + tmin_min_val; // val * range + min
 
-        double real_out_0 = true_vals[day-1][0];
-        double real_out_1 = true_vals[day-1][1];
-        double real_out_2 = true_vals[day-1][2];
+        double real_out_0 = test_true_vals[day-1][0];
+        double real_out_1 = test_true_vals[day-1][1];
+        double real_out_2 = test_true_vals[day-1][2];
 
         double diff_0 = abs(out_0 - real_out_0);
         tmax_delta.add(diff_0);
+        tmax_squared_sum += diff_0 * diff_0;
 
         double diff_1 = abs(out_1 - real_out_1);
         tavg_delta.add(diff_1);
+        tavg_squared_sum += diff_1 * diff_1;
 
         double diff_2 = abs(out_2 - real_out_2);
         tmin_delta.add(diff_2);
-
+        tmin_squared_sum += diff_2 * diff_2;
         // cout << "Input: (" << input[0] << ", " << input[1] << ", " << input[2] << ", " << input[3] << ", " << input[4 ]<< ", ... ) ";
 
         cout << day << ": ";
@@ -728,18 +774,22 @@ int main()
         day++;
     }
 
-    graphviz("test.dot", mlp, topology); // mlp and topology are passed by referenc
+    graphviz("test.dot", mlp, topology); // mlp and topology are passed by reference
     cout << endl;
-
-    //  Display performance data
-
     // Temp Max, delta between pred and real
-    cout << "Temp Max Delta" << endl;
+    cout << "Temp Max" << endl;
     // tmax_delta.display_vect();
     // calculate the stats after all data has been added for better performance
     tmax_delta.calc_stats();
-    // display calculated stats 
-    tmax_delta.display_stats();
+    //  Display performance data
+    // tmax_delta.display_stats();
+    // cout << endl;
+
+    // Display Mean Absolute Error
+    cout << "  Temp Max MAE: " << tmax_delta.mean << endl;
+    // Display Root Mean Squared Error
+    cout << "  Temp Max RMSE: " << sqrt(tmax_squared_sum / (day-1)) << endl;
+    
     cout << endl;
 
     // Temp Avg, delta between pred and real
@@ -748,7 +798,14 @@ int main()
     // calculate the stats after all data has been added for better performance
     tavg_delta.calc_stats();
     // display calculated stats 
-    tavg_delta.display_stats();
+    // tavg_delta.display_stats();
+    // cout << endl;
+
+    // Display Mean Absolute Error
+    cout << "  Temp Avg MAE: " << tavg_delta.mean << endl;
+    // Display Root Mean Squared Error
+    cout << "  Temp Avg RMSE: " << sqrt(tavg_squared_sum / (day-1)) << endl;
+
     cout << endl;
 
     // Temp Min, delta between pred and real
@@ -757,7 +814,13 @@ int main()
     // calculate the stats after all data has been added for better performance
     tmin_delta.calc_stats();
     // display calculated stats 
-    tmin_delta.display_stats();
+    // tmin_delta.display_stats();
+    // cout << endl;
+
+    // Display Mean Absolute Error
+    cout << "  Temp Min MAE: " << tmin_delta.mean << endl;
+    // Display Root Mean Squared Error
+    cout << "  Temp Min RMSE: " << sqrt(tmin_squared_sum / (day-1)) << endl;
     cout << endl;
 
     return 0;
@@ -765,7 +828,7 @@ int main()
 
 Matrix parseCSV(const string& filename, Matrix& norm_vals, Matrix& true_vals) 
 {
-    ifstream input("Month_Data/April_2023.csv");
+    ifstream input(filename);
     vector<vector<string>> data;
     string line;
     long i = 0;
