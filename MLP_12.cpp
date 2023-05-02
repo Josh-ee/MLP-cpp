@@ -218,7 +218,8 @@ bool VectorOps::calc_mean()
 bool VectorOps::calc_median()
 { 
     vector<double> temp = sequence;
-    sort(temp.begin(), temp.end()); //here is where i use sort
+    // sort the matrix before finding median
+    sort(temp.begin(), temp.end()); 
     auto size = temp.size();
     //odd
     if (size%2)
@@ -622,9 +623,13 @@ void MLP::applyDropout(bool training)
 
 
 
-//prototype functions (implemented below main)
-Matrix parseCSV(const string& filename, Matrix& norm_vals, Matrix& true_vals); //prototype parsing fucntion
+// **** prototype functions (implemented below main) ****
+
+// parsing fucntion takes in a csv and two empty matricies, fills them with the normalization vals and true vals and returns a matrix of the csv
+Matrix parseCSV(const string& filename, Matrix& norm_vals, Matrix& true_vals);
+// split function splits the matrix at a collumn and saves it to left_mtx and right_mtx 
 void splitMatrixAtColumn(const Matrix& inputMatrix, int split_col_idx, Matrix& left_mtx, Matrix& right_mtx);
+// graphviz creates a dot file of the MLP and topology that is passed
 void graphviz(const string& filename,const MLP& mlp, const vector<size_t> topology);
 
 int main() 
@@ -729,7 +734,9 @@ int main()
 
     // set to two decimals 
     cout << fixed << setprecision(2);
+
     long day = 1;
+
     VectorOps tmax_delta;
     VectorOps tavg_delta;
     VectorOps tmin_delta;
@@ -746,6 +753,7 @@ int main()
         vector<double>& input = test_inputs[i];
         // passing 'false' since this is the Evaluation step
         mlp.forward(input, false); 
+
         double out_0 =  mlp.get_output()[0] * (tmax_max_val - tmax_min_val) + tmax_min_val; // val * range + min
         double out_1 =  mlp.get_output()[1] * (tavg_max_val - tavg_min_val) + tavg_min_val; // val * range + min
         double out_2 =  mlp.get_output()[2] * (tmin_max_val - tmin_min_val) + tmin_min_val; // val * range + min
@@ -853,6 +861,7 @@ Matrix parseCSV(const string& filename, Matrix& norm_vals, Matrix& true_vals)
     }
 
     Matrix matrix;
+
     for (int i = 0; i < data.size(); ++i) 
     {
         vector<double> row;
