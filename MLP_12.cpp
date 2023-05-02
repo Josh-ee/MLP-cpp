@@ -839,6 +839,7 @@ Matrix parseCSV(const string& filename, Matrix& norm_vals, Matrix& true_vals)
     ifstream input(filename);
     vector<vector<string>> data;
     string line;
+    
     long i = 0;
     while (getline(input, line)) 
     {
@@ -900,9 +901,11 @@ Matrix parseCSV(const string& filename, Matrix& norm_vals, Matrix& true_vals)
             }
         }
         double range = max_val - min_val;
+
         norm_row.push_back(min_val);
         norm_row.push_back(max_val);
         norm_vals.push_back(norm_row);
+
         for (int i = 0; i < matrix.rows(); ++i) 
         {
             matrix[i][j] = (matrix[i][j] - min_val) / range;
@@ -939,7 +942,6 @@ void graphviz(const string& filename,const MLP& mlp, const vector<size_t> topolo
 {
     ofstream file;
     file.open(filename);
-    // file.open("network_12.dot");
     file << "digraph G {\n";
     file << "  rankdir=LR;\n";
 
