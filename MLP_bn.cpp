@@ -68,8 +68,8 @@ Matrix::~Matrix()
 }
 
 
-
-size_t Matrix::rows() const // matrix.rows() returns size of rows
+// matrix.rows() returns size of rows
+size_t Matrix::rows() const 
 {
     size_t sz;
     if (data.empty())
@@ -83,7 +83,8 @@ size_t Matrix::rows() const // matrix.rows() returns size of rows
     return sz;
 }
 
-size_t Matrix::cols() const // matrix.cols() returns size of cols
+// matrix.cols() returns size of cols
+size_t Matrix::cols() const 
 {
     size_t sz;
     if (data.empty())
@@ -812,6 +813,9 @@ int main()
         }
     }
 
+    // if batch normalization is working then each hidden layer should:
+    // have a mean near 0
+    // and a variance near 1
     graphviz("train_"+ extention + ".dot", mlp, topology, true); // mlp and topology are passed by reference 
 
     // ***************** TESTING ***************************** 
