@@ -103,7 +103,7 @@ void Matrix::push_back(vector<double> row)
     data.push_back(row);
 }
 
-//need to resize both rows and cols
+// need to resize both rows and cols
 void Matrix::resize(size_t rows, size_t cols)
 {
     data.resize(rows);
@@ -311,7 +311,7 @@ void VectorOps::display_stats() const
 { 
     cout << "Mean: " << mean << endl;
     cout << "Median: " << median << endl;
-    cout << "Mode: " << mode << endl;
+    // cout << "Mode: " << mode << endl;
     cout << "Standard Deviation: " << std_dev << endl;
     cout << "Variance: " << variance << endl;
     return;
@@ -377,6 +377,10 @@ class Layer
 public:
     // a Layer is a vector of neurons
     vector<Neuron> neurons;
+
+    double running_mean = 0.0;
+    double running_variance = 1.0;
+
     //constructor/init
     Layer(size_t num_neurons, size_t num_outputs); 
     // deconstructor
@@ -400,17 +404,26 @@ Layer::~Layer()  //deconstructor
 class MLP 
 {
 private:
+
+    bool apply_batch;
+
     void setInput(const vector<double> &input);
 
     void calculateOutputLayerDeltas(const vector<double> &target);
 
-    void propagateForward();
+    // private functions 
+
+    void propagateForward(bool training);
 
     void propagateBackward();
 
     void updateWeights(double learning_rate);
 
     void applyDropout(bool training);
+
+    void normalizeBatch(const size_t layer_index, bool training, double momentum = 0.9, double epsilon = 1e-5);
+
+    void normalizeBatchBackward(const size_t layer_index, const double epsilon = 1e-5);
 
 public:
     // public variables
@@ -419,7 +432,7 @@ public:
 
     // Constructors 
     // constructor/init 
-    MLP(const vector<size_t> &topology, double dropout_rate = 0.1); 
+    MLP(const vector<size_t> &topology, double dropout_rate = 0.1, bool apply_batch = true); 
 
     // deconstructor 
     ~MLP();
@@ -434,15 +447,16 @@ public:
 };
 
 
-MLP::MLP(const vector<size_t> &topology, double dropout_rate) //constructor
+MLP::MLP(const vector<size_t> &topology, double dropout_rate, bool apply_batch) //constructor
 { 
+    this->apply_batch = apply_batch;
     // set dropout_rate to the rate passed by the user 
     if (dropout_rate != 0.0)
     {
         cout << "Dropout : " << dropout_rate*100 << "%" << endl;
     }
     else{
-        cout << "No Dropout";
+        cout << "No Dropout" << endl;
     }
     this->dropout_rate = dropout_rate;
     
@@ -476,7 +490,17 @@ void MLP::forward(const vector<double> &input, bool training)
     // input vals are passed to input neurons 
     setInput(input);
     // do forward propagation to get output of each neuron 
-    propagateForward();
+    propagateForward(training);
+    
+    // Apply batch normalization (except for the output layer)
+    if (apply_batch) 
+    {
+        for (size_t i = 1; i < layers.size() - 1; ++i) // Exclude the input and output layers
+        {
+            normalizeBatch(i, training);
+        }
+    }
+
     // when training apply dropout (which drops random neurons to prevent overfitting)
     applyDropout(training);
 }
@@ -487,9 +511,17 @@ void MLP::backward(const vector<double> &target, double learning_rate)
     calculateOutputLayerDeltas(target);
     // propagate backwards calculating delta along the way 
     propagateBackward();
+
+    // Apply batch normalization backward pass (except for the output layer)
+    if (apply_batch)
+    {
+        for (size_t i = layers.size() - 2; i > 0; --i) // Exclude the input and output layers
+        {
+            normalizeBatchBackward(i);
+        }
+    }
     // update the weights based on the calculated deltas and the learninging rate (alpha)
     updateWeights(learning_rate); 
-    
 }
 
 // this function just reads neuron vals without changing vals, hince the const 
@@ -521,7 +553,7 @@ void MLP::setInput(const vector<double> &input)
     }
 }
 
-void MLP::propagateForward() 
+void MLP::propagateForward(bool training)
 {
     // loop through layers in the MLP (starting at the first hidden layer)
     for (size_t i = 1; i < layers.size(); ++i) 
@@ -540,21 +572,23 @@ void MLP::propagateForward()
             // send the sum to the transfer function and set the result to the neurons output val
             layers[i].neurons[j].value = activationFunction(sum);
         }
+        
     }
 }
 
-void MLP::propagateBackward()  // this is like propagateForward but in reverse order 
+
+void MLP::propagateBackward()
 {
-    // loop through layers in the MLP in Reverese Order 
-    for (size_t i = layers.size() - 2; i > 0; --i) 
+    // loop through layers in the MLP in Reverse Order
+    for (size_t i = layers.size() - 2; i > 0; --i)
     {
         // loop through neurons in the layer
-        for (size_t j = 0; j < layers[i].neurons.size(); ++j) 
+        for (size_t j = 0; j < layers[i].neurons.size(); ++j)
         {
-            // going to get the error 
+            // going to get the error
             double error = 0;
             // loop through the neurons in next layer
-            for (size_t k = 0; k < layers[i + 1].neurons.size(); ++k) 
+            for (size_t k = 0; k < layers[i + 1].neurons.size(); ++k)
             {
                 // add the error of the neurons in next layer (including the delta in connection to next neuron)
                 error += layers[i].neurons[j].weights[k] * layers[i + 1].neurons[k].delta;
@@ -620,6 +654,79 @@ void MLP::applyDropout(bool training)
     }
 }
 
+void MLP::normalizeBatch(const size_t layer_index, bool training, double momentum, double epsilon)
+{
+    Layer &layer = layers[layer_index];
+    double mean;
+    double variance;
+
+    if (training)
+    {
+        // calculate the mean and variance of the neuron values in the layer
+        mean = 0.0;
+        variance = 0.0;
+        // using iterators to change it up a bit
+        for (auto it = layer.neurons.begin(); it != layer.neurons.end(); ++it)
+        {
+            mean += it->value;
+        }
+        mean = mean / layer.neurons.size();
+
+        for (auto it = layer.neurons.begin(); it != layer.neurons.end(); ++it)
+        {
+            variance += (it->value - mean) * (it->value - mean);
+        }
+        variance = variance / layer.neurons.size();
+
+        // if training, update the running mean and variance here
+        layer.running_mean = momentum * layer.running_mean + (1.0 - momentum) * mean;
+        layer.running_variance = momentum * layer.running_variance + (1.0 - momentum) * variance;
+    }
+    else
+    {
+        // if testing, update the running mean and variance for normalization here
+        mean = layer.running_mean;
+        variance = layer.running_variance;
+    }
+
+    // normalize the neuron values based on the mean and variance
+    for (auto it = layer.neurons.begin(); it != layer.neurons.end(); ++it)
+    {
+        it->value = (it->value - mean) / sqrt(variance + epsilon);
+    }
+}
+
+void MLP::normalizeBatchBackward(const size_t layer_index, const double epsilon)
+{
+    Layer &layer = layers[layer_index];
+
+    double mean = 0;
+    double variance = 0;
+    // using iterators to change it up a bit
+    for (auto it = layer.neurons.begin(); it != layer.neurons.end(); ++it)
+    {
+        mean += it->value;
+    }
+    mean = mean/ layer.neurons.size();
+
+    for (auto it = layer.neurons.begin(); it != layer.neurons.end(); ++it)
+    {
+        variance += (it->value - mean) * (it->value - mean);
+    }
+    variance = variance/layer.neurons.size();
+
+    // find standard devaition 
+    double std_dev = sqrt(variance + epsilon);
+    // find inverse of it
+    double inv_std_dev = 1.0 / std_dev;
+
+    // calculate derivative of the loss with respect to x for each neuron 
+    for (auto it = layer.neurons.begin(); it != layer.neurons.end(); ++it)
+    {
+        // multiply delta by the inverse of the standard dev
+        it->delta = it->delta * inv_std_dev;
+    }
+}
 
 
 // **** prototype functions (implemented below main) ****
@@ -629,7 +736,7 @@ Matrix parseCSV(const string& filename, Matrix& norm_vals, Matrix& true_vals);
 // split function splits the matrix at a collumn and saves it to left_mtx and right_mtx 
 void splitMatrixAtColumn(const Matrix& inputMatrix, int split_col_idx, Matrix& left_mtx, Matrix& right_mtx);
 // graphviz creates a dot file of the MLP and topology that is passed
-void graphviz(const string& filename,const MLP& mlp, const vector<size_t> topology);
+void graphviz(const string& filename,const MLP& mlp, const vector<size_t> topology, bool display_layer_stats = false);
 
 int main() 
 {
@@ -638,19 +745,32 @@ int main()
     // vector<size_t> topology = {2, 3, 1}; //input {2 input neurons, 1 hidden layer (with 3 neurons), 1 p}
     unsigned int num_outputs = 3; // unsigned since it will always be positive 
     // vector<size_t> topology = {3, 64, 32, 16, num_outputs};
-    vector<size_t> topology = {13, 16, 32, 16, num_outputs}; //13 input features, 3 outputs
+    vector<size_t> topology = {13, 64, 32, 16, num_outputs}; //13 input features, 3 outputs
     // vector<size_t> topology = {5, 10, 12, 10, num_outputs}; //13 input features, 3 outputs
     // MLP mlp(topology, .4);
 
-    double dropout_rate = 0.1;
+    double dropout_rate = 0.0;
     
-    size_t num_epochs = 500;
+    size_t num_epochs = 2;
 
-    double learning_rate = 0.1; // This is my alpha
+    double learning_rate = 0.01; // This is my alpha
+
+    bool apply_batch = true;
 
     cout << endl;
-
-    MLP mlp(topology, dropout_rate);
+    
+    MLP mlp(topology, dropout_rate, apply_batch);
+    string extention;
+    if (apply_batch)
+    {
+        extention = "bn";
+        cout << "Batch Normalization Applied";
+    }
+    else
+    {
+        extention = "sk";
+        cout << "Batch Normalization Skipped";
+    }
 
     // ***************** TRAINING ***************************** 
     string train_file_name = "Month_Data/April_Data.csv";
@@ -692,11 +812,11 @@ int main()
         }
     }
 
-    graphviz("train.dot", mlp, topology); // mlp and topology are passed by reference 
+    graphviz("train_"+ extention + ".dot", mlp, topology, true); // mlp and topology are passed by reference 
 
     // ***************** TESTING ***************************** 
-    // string test_file_name = "Month_Data/March_2023.csv";
-    string test_file_name = "Month_Data/April_2023.csv";
+    string test_file_name = "Month_Data/March_2023.csv";
+    // string test_file_name = "Month_Data/April_2023.csv";
     Matrix test_norm_vals; //init here and pass by refrence 
     Matrix test_true_vals;
     Matrix test_mtx = parseCSV(test_file_name, test_norm_vals, test_true_vals); // this parses and normalizes the matrix
@@ -781,7 +901,7 @@ int main()
         day++;
     }
 
-    graphviz("test.dot", mlp, topology); // mlp and topology are passed by reference
+    graphviz("test_"+ extention + ".dot", mlp, topology); // mlp and topology are passed by reference
     cout << endl;
     // Temp Max, delta between pred and real
     cout << "Temp Max" << endl;
@@ -937,16 +1057,17 @@ void splitMatrixAtColumn(const Matrix& inputMatrix, int split_col_idx, Matrix& l
 }
 
 // Create Graphviz file
-void graphviz(const string& filename,const MLP& mlp, const vector<size_t> topology) 
+void graphviz(const string& filename,const MLP& mlp, const vector<size_t> topology, bool display_layer_stats) 
 {
     ofstream file;
     file.open(filename);
     file << "digraph G {\n";
     file << "  rankdir=LR;\n";
-
+    
     // add the nodes
     for (size_t i = 0; i < topology.size(); ++i) 
     {
+        VectorOps temp_vector;
         file << "  subgraph cluster_" << i << " {\n";
         file << "    style=filled;\n";
         file << "    color=lightgrey;\n";
@@ -957,9 +1078,19 @@ void graphviz(const string& filename,const MLP& mlp, const vector<size_t> topolo
             string neuron_val = to_string(mlp.layers[i].neurons[j].value); // get neuron value
             neuron_val.resize(4); // truncate after 2 decimal places (aka 4 chars)
             file << "    i" << i << "h" << j << " [style=filled, color=" << node_color << ", label=\"" << neuron_val << "\"];\n";
+            temp_vector.add(mlp.layers[i].neurons[j].value);
         }
         file << "    label = \"Layer " << i << "\";\n";
         file << "  }\n";
+        if (display_layer_stats)
+        {
+            cout <<endl;
+            cout << "Layer " << i  <<endl;
+            temp_vector.calc_stats();
+            temp_vector.display_stats();
+            
+        }
+        
     }
     
     // add the arrows 
