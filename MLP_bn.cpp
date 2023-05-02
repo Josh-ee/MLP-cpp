@@ -414,9 +414,9 @@ private:
 
     // private functions 
 
-    void propagateForward(bool training);
+    void feedForward(bool training);
 
-    void propagateBackward();
+    void backProp();
 
     void updateWeights(double learning_rate);
 
@@ -443,7 +443,7 @@ public:
 
     void backward(const vector<double> &target, double learning_rate);
 
-    const vector<double> get_output() const;
+    const vector<double> getOutVal() const;
     
 };
 
@@ -491,7 +491,7 @@ void MLP::forward(const vector<double> &input, bool training)
     // input vals are passed to input neurons 
     setInput(input);
     // do forward propagation to get output of each neuron 
-    propagateForward(training);
+    feedForward(training);
     
     // Apply batch normalization (except for the output layer)
     if (apply_batch) 
@@ -511,7 +511,7 @@ void MLP::backward(const vector<double> &target, double learning_rate)
     // calculate output layer error (aka delta) given the target vals
     calculateOutputLayerDeltas(target);
     // propagate backwards calculating delta along the way 
-    propagateBackward();
+    backProp();
 
     // Apply batch normalization backward pass (except for the output layer)
     if (apply_batch)
@@ -526,7 +526,7 @@ void MLP::backward(const vector<double> &target, double learning_rate)
 }
 
 // this function just reads neuron vals without changing vals, hince the const 
-const vector<double> MLP::get_output() const 
+const vector<double> MLP::getOutVal() const 
 { 
     // initilize a vecotor of doubles (called output)
     vector<double> output;
@@ -537,7 +537,7 @@ const vector<double> MLP::get_output() const
         output.push_back(neuron.value);
     }
     // return the output vector that contains the output neuron values 
-    return output;
+    return output; // this works even tho its declared in the function
 }
 
 void MLP::setInput(const vector<double> &input) 
@@ -554,7 +554,7 @@ void MLP::setInput(const vector<double> &input)
     }
 }
 
-void MLP::propagateForward(bool training)
+void MLP::feedForward(bool training)
 {
     // loop through layers in the MLP (starting at the first hidden layer)
     for (size_t i = 1; i < layers.size(); ++i) 
@@ -578,7 +578,7 @@ void MLP::propagateForward(bool training)
 }
 
 
-void MLP::propagateBackward()
+void MLP::backProp()
 {
     // loop through layers in the MLP in Reverse Order
     for (size_t i = layers.size() - 2; i > 0; --i)
@@ -746,32 +746,46 @@ int main()
     // vector<size_t> topology = {2, 3, 1}; //input {2 input neurons, 1 hidden layer (with 3 neurons), 1 p}
     unsigned int num_outputs = 3; // unsigned since it will always be positive 
     // vector<size_t> topology = {3, 64, 32, 16, num_outputs};
-    vector<size_t> topology = {13, 64, 32, 16, num_outputs}; //13 input features, 3 outputs
+    vector<size_t> topology = {13, 16, 32, 16, num_outputs}; //13 input features, 3 outputs
     // vector<size_t> topology = {5, 10, 12, 10, num_outputs}; //13 input features, 3 outputs
     // MLP mlp(topology, .4);
 
-    double dropout_rate = 0.0;
-    
+    // since droput is applied after it affects batch normalization 
+
+    string extention;
+
+    double dropout_rate = 0.1; 
+
     size_t num_epochs = 2;
 
     double learning_rate = 0.01; // This is my alpha
 
-    bool apply_batch = true;
+    bool apply_batch = false;
 
     cout << endl;
     
     MLP mlp(topology, dropout_rate, apply_batch);
-    string extention;
+    
     if (apply_batch)
     {
-        extention = "bn";
+        extention = "_bn";
         cout << "Batch Normalization Applied";
     }
     else
     {
-        extention = "sk";
+        extention = "_sk";
         cout << "Batch Normalization Skipped";
     }
+
+    if (dropout_rate != 0)
+    {
+        extention += "_dr";
+    }
+    else
+    {
+        extention += "_ndr";
+    }
+    
 
     // ***************** TRAINING ***************************** 
     string train_file_name = "Month_Data/April_Data.csv";
@@ -785,7 +799,6 @@ int main()
     Matrix left_mtx, right_mtx;
     splitMatrixAtColumn(train_mtx, split_idx, left_mtx, right_mtx);
 
-    
 
     Matrix train_inputs = right_mtx;
     Matrix targets = left_mtx;
@@ -816,7 +829,7 @@ int main()
     // if batch normalization is working then each hidden layer should:
     // have a mean near 0
     // and a variance near 1
-    graphviz("train_"+ extention + ".dot", mlp, topology, true); // mlp and topology are passed by reference 
+    graphviz("train"+ extention + ".dot", mlp, topology, true); // mlp and topology are passed by reference 
 
     // ***************** TESTING ***************************** 
     string test_file_name = "Month_Data/March_2023.csv";
@@ -877,9 +890,9 @@ int main()
         // passing 'false' since this is the Evaluation step
         mlp.forward(input, false); 
 
-        double out_0 =  mlp.get_output()[0] * (tmax_max_val - tmax_min_val) + tmax_min_val; // val * range + min
-        double out_1 =  mlp.get_output()[1] * (tavg_max_val - tavg_min_val) + tavg_min_val; // val * range + min
-        double out_2 =  mlp.get_output()[2] * (tmin_max_val - tmin_min_val) + tmin_min_val; // val * range + min
+        double out_0 =  mlp.getOutVal()[0] * (tmax_max_val - tmax_min_val) + tmax_min_val; // val * range + min
+        double out_1 =  mlp.getOutVal()[1] * (tavg_max_val - tavg_min_val) + tavg_min_val; // val * range + min
+        double out_2 =  mlp.getOutVal()[2] * (tmin_max_val - tmin_min_val) + tmin_min_val; // val * range + min
 
         double real_out_0 = test_true_vals[day-1][0];
         double real_out_1 = test_true_vals[day-1][1];
@@ -905,7 +918,7 @@ int main()
         day++;
     }
 
-    graphviz("test_"+ extention + ".dot", mlp, topology); // mlp and topology are passed by reference
+    graphviz("test"+ extention + ".dot", mlp, topology); // mlp and topology are passed by reference
     cout << endl;
     // Temp Max, delta between pred and real
     cout << "Temp Max" << endl;
